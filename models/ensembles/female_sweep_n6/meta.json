@@ -1,0 +1,65 @@
+{
+  "gender": "female",
+  "tag": "sweep_n6",
+  "input_names": [
+    "height",
+    "weight",
+    "chest",
+    "waist",
+    "hips",
+    "thigh"
+  ],
+  "n_members": 1,
+  "n_betas": 10,
+  "hidden_dims": [
+    64,
+    128,
+    64
+  ],
+  "dropout": 0.1,
+  "plausibility_filter": true,
+  "filter_bad_fraction_per_column": {
+    "height": 0.0187,
+    "weight": 0.0226,
+    "chest": 0.04195,
+    "waist": 0.10525,
+    "hips": 0.0091,
+    "thigh": 0.01305
+  },
+  "n_train": 14046,
+  "n_val": 1733,
+  "n_test": 2000,
+  "input_ranges": {
+    "height": [
+      148.3893429290624,
+      182.16647722454644
+    ],
+    "weight": [
+      42.287090792929774,
+      124.39574788364196
+    ],
+    "chest": [
+      80.38548965673733,
+      136.78784131654078
+    ],
+    "waist": [
+      66.39192726258881,
+      122.7471199778787
+    ],
+    "hips": [
+      85.69321419949297,
+      136.9610237341062
+    ],
+    "thigh": [
+      43.02512938872894,
+      76.16102268087633
+    ]
+  },
+  "members": [
+    {
+      "seed": 42,
+      "best_val_nll": -0.02957896888256073,
+      "best_epoch": 86
+    }
+  ]
+}

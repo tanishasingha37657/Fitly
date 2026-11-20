@@ -1,0 +1,15 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+.vscode/
+
+smpl_models/
+data/
+outputs/
+*.pkl
+**/split.npz
+
+SMPL_python_v1.1.0/
+*.npz

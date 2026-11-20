@@ -1,0 +1,78 @@
+{
+  "gender": "male",
+  "tag": "base_nofilter",
+  "input_names": [
+    "height",
+    "weight",
+    "chest",
+    "waist",
+    "hips",
+    "thigh"
+  ],
+  "n_members": 5,
+  "n_betas": 10,
+  "hidden_dims": [
+    64,
+    128,
+    64
+  ],
+  "dropout": 0.1,
+  "plausibility_filter": false,
+  "filter_bad_fraction_per_column": {},
+  "n_train": 16000,
+  "n_val": 2000,
+  "n_test": 2000,
+  "input_ranges": {
+    "height": [
+      152.37127161409444,
+      204.5527356842221
+    ],
+    "weight": [
+      37.50268078438455,
+      147.84985641797658
+    ],
+    "chest": [
+      75.63548580494943,
+      137.09233771262376
+    ],
+    "waist": [
+      53.97858778048828,
+      130.83753254703487
+    ],
+    "hips": [
+      82.18229664358269,
+      131.0364783296339
+    ],
+    "thigh": [
+      37.66285044576745,
+      69.4298683547224
+    ]
+  },
+  "members": [
+    {
+      "seed": 42,
+      "best_val_nll": -0.04463956132531166,
+      "best_epoch": 97
+    },
+    {
+      "seed": 43,
+      "best_val_nll": -0.04397030919790268,
+      "best_epoch": 107
+    },
+    {
+      "seed": 44,
+      "best_val_nll": -0.04448452219367027,
+      "best_epoch": 97
+    },
+    {
+      "seed": 45,
+      "best_val_nll": -0.044093381613492966,
+      "best_epoch": 70
+    },
+    {
+      "seed": 46,
+      "best_val_nll": -0.04407713934779167,
+      "best_epoch": 94
+    }
+  ]
+}

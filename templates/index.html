@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fitly · Measurements to 3D body</title>
+
+{# Per-measurement label, unit, example and sane limits. Keys must match config.INPUT_NAMES. #}
+{% set meta = {
+  'height': {'label': 'Height',  'unit': 'cm', 'ph': '170', 'min': 120, 'max': 230, 'hint': 'Barefoot, standing straight'},
+  'weight': {'label': 'Weight',  'unit': 'kg', 'ph': '70',  'min': 30,  'max': 250, 'hint': 'Body weight from a scale'},
+  'chest':  {'label': 'Chest',   'unit': 'cm', 'ph': '95',  'min': 50,  'max': 190, 'hint': 'Fullest part of the chest'},
+  'waist':  {'label': 'Waist',   'unit': 'cm', 'ph': '80',  'min': 40,  'max': 190, 'hint': 'Narrowest part of the torso'},
+  'hips':   {'label': 'Hips',    'unit': 'cm', 'ph': '98',  'min': 55,  'max': 190, 'hint': 'Fullest part of hips and buttocks'},
+  'thigh':  {'label': 'Thigh',   'unit': 'cm', 'ph': '55',  'min': 30,  'max': 110, 'hint': 'Fullest part, near the top of the thigh'}
+} %}
+
+<style>
+  :root {
+    --peach:   #fde7dc;
+    --blush:   #f6cbe0;
+    --orchid:  #cdb4ee;
+    --sky:     #93b3f5;
+    --navy:    #2a3363;
+    --navy-2:  #5a6190;
+    --violet:  #7658d6;
+    --blue:    #4f7cff;
+    --glass:   rgba(255, 255, 255, 0.62);
+    --glass-strong: rgba(255, 255, 255, 0.82);
+    --line:    rgba(42, 51, 99, 0.14);
+    --danger:  #b3315a;
+    --warn-bg: #fff2d9;
+    --warn-ink:#7a4b00;
+    --radius:  20px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: "Inter", "Segoe UI", -apple-system, Roboto, sans-serif;
+    color: var(--navy);
+    background:
+      radial-gradient(900px 600px at 0% 0%, var(--peach), transparent 60%),
+      radial-gradient(900px 700px at 45% 100%, var(--blush), transparent 60%),
+      linear-gradient(120deg, #fbdccf 0%, #e9c3e3 35%, #b9b3ec 65%, #8fb0f2 100%);
+    background-attachment: fixed;
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    min-height: 100vh;
+  }
+
+  /* ---------- Left panel ---------- */
+  #panel {
+    width: 392px;
+    flex: none;
+    background: var(--glass);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.7);
+    border-radius: 28px;
+    padding: 28px 26px 26px;
+    overflow-y: auto;
+    max-height: calc(100vh - 40px);
+    box-shadow: 0 20px 50px rgba(90, 70, 160, 0.18);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .brand-mark {
+    width: 34px; height: 34px; border-radius: 11px;
+    background: linear-gradient(135deg, var(--violet), var(--blue));
+    display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 17px;
+  }
+  .brand-name { font-weight: 700; font-size: 17px; letter-spacing: 0.2px; }
+  h1 { font-size: 26px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.4px; }
+  p.sub { margin: 0 0 20px; color: var(--navy-2); font-size: 14px; line-height: 1.5; }
+
+  .guide-btn {
+    width: 100%;
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 14px;
+    background: var(--glass-strong);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    color: var(--navy);
+    font: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .guide-btn:hover { background: #fff; border-color: var(--violet); }
+  .guide-btn .ico {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(118,88,214,0.14); color: var(--violet);
+    display: grid; place-items: center; font-size: 14px; font-weight: 700; flex: none;
+  }
+  .guide-btn small { margin-left: auto; font-weight: 500; color: var(--navy-2); }
+
+  fieldset { border: 0; padding: 0; margin: 22px 0 0; min-width: 0; }
+  legend { font-size: 15px; font-weight: 700; padding: 0; margin-bottom: 10px; }
+  .step-note { font-size: 12.5px; color: var(--navy-2); margin: -4px 0 10px; }
+
+  /* Gender segmented control */
+  .seg { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;
+         background: rgba(255,255,255,0.55); padding: 5px; border-radius: 14px; border: 1px solid var(--line); }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label {
+    text-align: center; padding: 9px 6px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; color: var(--navy-2); cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .seg label:hover { color: var(--navy); }
+  .seg input:checked + label {
+    background: linear-gradient(135deg, var(--violet), var(--blue));
+    color: #fff; box-shadow: 0 6px 14px rgba(94, 90, 220, 0.35);
+  }
+  .seg input:focus-visible + label { outline: 2px solid var(--navy); outline-offset: 2px; }
+
+  /* Measurement fields */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .field label { font-size: 13px; font-weight: 600; }
+  .input-wrap { position: relative; }
+  .input-wrap input {
+    width: 100%;
+    padding: 11px 38px 11px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,0.85);
+    color: var(--navy);
+    font: inherit; font-size: 15px; font-weight: 600;
+    transition: border-color .15s, box-shadow .15s;
+    -moz-appearance: textfield;
+  }
+  .input-wrap input::-webkit-outer-spin-button,
+  .input-wrap input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .input-wrap input::placeholder { color: #a7abc9; font-weight: 500; }
+  .input-wrap input:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(118,88,214,0.2); }
+  .input-wrap input:invalid:not(:placeholder-shown) { border-color: var(--danger); }
+  .unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+          font-size: 12px; color: var(--navy-2); font-weight: 600; pointer-events: none; }
+  .hint { font-size: 11.5px; color: var(--navy-2); line-height: 1.3; }
+
+  /* Actions */
+  .actions { margin-top: 24px; display: grid; gap: 10px; }
+  #genBtn {
+    width: 100%; padding: 14px; border: none; border-radius: 14px;
+    background: linear-gradient(135deg, var(--violet), var(--blue));
+    color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 12px 26px rgba(94, 90, 220, 0.38);
+    transition: transform .12s, box-shadow .12s, filter .12s;
+  }
+  #genBtn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.05); }
+  #genBtn:disabled { background: #b9bcd8; box-shadow: none; cursor: progress; }
+  .link-btn {
+    background: none; border: none; font: inherit; font-size: 13px; font-weight: 600;
+    color: var(--violet); cursor: pointer; padding: 4px; justify-self: center;
+  }
+  .link-btn:hover { text-decoration: underline; }
+
+  #status { margin-top: 14px; font-size: 13px; min-height: 18px; color: var(--navy-2); }
+  #status.error {
+    color: var(--danger); background: rgba(179,49,90,0.08);
+    border: 1px solid rgba(179,49,90,0.25); padding: 10px 12px; border-radius: 12px;
+  }
+  #status.ok { color: #1d7a55; font-weight: 600; }
+
+  #warnings {
+    margin-top: 12px; padding: 11px 13px; border-radius: 12px;
+    background: var(--warn-bg); color: var(--warn-ink); font-size: 12.5px; line-height: 1.45;
+    border: 1px solid rgba(122,75,0,0.2);
+  }
+  #warnings strong { display: block; margin-bottom: 4px; }
+  #warnings ul { margin: 0; padding-left: 18px; }
+
+  details#betaBox { margin-top: 14px; font-size: 12px; color: var(--navy-2); }
+  details#betaBox summary { cursor: pointer; font-weight: 600; color: var(--navy); }
+  #betaOut { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: rgba(255,255,255,0.8); border: 1px solid var(--line); border-radius: 999px;
+          padding: 3px 9px; font-variant-numeric: tabular-nums; }
+
+  /* ---------- Viewer ---------- */
+  #viewerWrap {
+    flex: 1; position: relative; min-width: 0;
+    border-radius: 28px; overflow: hidden;
+    background:
+      radial-gradient(520px 420px at 50% 55%, rgba(255,255,255,0.75), transparent 70%),
+      linear-gradient(160deg, rgba(255,255,255,0.35), rgba(255,255,255,0.1));
+    border: 1px solid rgba(255,255,255,0.7);
+    box-shadow: 0 20px 50px rgba(90, 70, 160, 0.18);
+    min-height: 420px;
+  }
+  #viewer { position: absolute; inset: 0; }
+  #viewer canvas { display: block; width: 100%; height: 100%; }
+
+  #empty {
+    position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+    padding: 30px; pointer-events: none; transition: opacity .3s;
+  }
+  #empty.hidden { opacity: 0; }
+  #empty .card { max-width: 320px; }
+  #empty svg { width: 120px; height: auto; margin-bottom: 14px; opacity: .9; }
+  #empty h2 { font-size: 20px; margin: 0 0 6px; }
+  #empty p { margin: 0; color: var(--navy-2); font-size: 14px; line-height: 1.5; }
+
+  #loading {
+    position: absolute; inset: 0; display: none; place-items: center;
+    background: rgba(255,255,255,0.55); backdrop-filter: blur(4px);
+  }
+  #loading.show { display: grid; }
+  .spinner {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 4px solid rgba(118,88,214,0.2); border-top-color: var(--violet);
+    animation: spin .8s linear infinite; margin: 0 auto 12px;
+  }
+  #loading p { margin: 0; font-weight: 600; text-align: center; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .toolbar {
+    position: absolute; top: 16px; right: 16px; display: none; gap: 8px;
+  }
+  .toolbar.show { display: flex; }
+  .tool {
+    background: var(--glass-strong); border: 1px solid var(--line); border-radius: 12px;
+    padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 600; color: var(--navy);
+    cursor: pointer; text-decoration: none; transition: background .15s;
+  }
+  .tool:hover { background: #fff; }
+  .tool[aria-pressed="true"] { background: var(--violet); color: #fff; border-color: var(--violet); }
+
+  #hint {
+    position: absolute; bottom: 14px; left: 0; right: 0; text-align: center;
+    font-size: 12.5px; color: var(--navy-2); pointer-events: none;
+  }
+
+  /* ---------- Modal ---------- */
+  .modal {
+    display: none; position: fixed; inset: 0; z-index: 9999;
+    background: rgba(42, 51, 99, 0.55); backdrop-filter: blur(6px);
+    justify-content: center; align-items: center; padding: 24px;
+  }
+  .modal.open { display: flex; }
+  .modal-card {
+    position: relative; max-width: 760px; width: 100%; max-height: 100%;
+    background: #fff; border-radius: 24px; padding: 18px 18px 14px;
+    display: flex; flex-direction: column; gap: 10px;
+    box-shadow: 0 30px 80px rgba(20, 20, 60, 0.45);
+  }
+  .modal-card img { width: 100%; min-height: 0; object-fit: contain; border-radius: 14px; }
+  .modal-note { font-size: 13px; color: var(--navy-2); text-align: center; padding: 0 30px 4px; }
+  .close {
+    position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; border-radius: 50%;
+    border: none; background: rgba(42,51,99,0.08); color: var(--navy); font-size: 22px; line-height: 1;
+    cursor: pointer;
+  }
+  .close:hover { background: rgba(42,51,99,0.16); }
+
+  :focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 900px) {
+    body { flex-direction: column; padding: 12px; gap: 12px; }
+    #panel { width: 100%; max-height: none; }
+    #viewerWrap { min-height: 480px; flex: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation-duration: 2s; }
+    * { transition: none !important; }
+  }
+</style>
+</head>
+
+<body>
+
+<!-- ================= Controls ================= -->
+<aside id="panel">
+  <div class="brand">
+    <div class="brand-mark">F</div>
+    <span class="brand-name">Fitly</span>
+  </div>
+
+  <h1>See your body in 3D</h1>
+  <p class="sub">Enter your measurements and we'll build an estimated 3D body you can rotate and inspect.</p>
+
+  <button type="button" class="guide-btn" id="guideBtn">
+    <span class="ico">?</span> How to measure <small>Visual guide</small>
+  </button>
+
+  <form id="measForm" novalidate>
+    <fieldset>
+      <legend>1. Body type</legend>
+      <div class="seg" role="radiogroup" aria-label="Body type">
+        <input type="radio" name="gender" id="g-male" value="male" required>
+        <label for="g-male">Male</label>
+        <input type="radio" name="gender" id="g-female" value="female">
+        <label for="g-female">Female</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>2. Your measurements</legend>
+      <p class="step-note">Heights and girths in centimetres, weight in kilograms.</p>
+      <div class="grid">
+        {% for name in measurement_names %}
+        {% set m = meta.get(name, {'label': name|capitalize, 'unit': 'cm', 'ph': '', 'min': 1, 'max': 500, 'hint': ''}) %}
+        <div class="field">
+          <label for="{{ name }}">{{ m.label }}</label>
+          <div class="input-wrap">
+            <input type="number" inputmode="decimal" step="0.1"
+                   id="{{ name }}" name="{{ name }}"
+                   placeholder="{{ m.ph }}" min="{{ m.min }}" max="{{ m.max }}" required>
+            <span class="unit">{{ m.unit }}</span>
+          </div>
+          <span class="hint">{{ m.hint }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit" id="genBtn">Generate body mesh</button>
+      <button type="button" class="link-btn" id="exampleBtn">Fill with example values</button>
+    </div>
+  </form>
+
+  <div id="status" role="status" aria-live="polite"></div>
+  <div id="warnings" hidden></div>
+
+  <details id="betaBox" hidden>
+    <summary>Technical details (shape parameters)</summary>
+    <div id="betaOut"></div>
+  </details>
+</aside>
+
+<!-- ================= Viewer ================= -->
+<main id="viewerWrap">
+  <div id="viewer"></div>
+
+  <div id="empty">
+    <div class="card">
+      <svg viewBox="0 0 120 160" fill="none" stroke="#7658d6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="60" cy="22" r="13"/>
+        <path d="M44 48c-8 3-12 10-13 20l-3 40m61-60c8 3 12 10 13 20l3 40M44 48h32l-2 44 4 56H42l4-56z" opacity=".85"/>
+        <ellipse cx="60" cy="152" rx="38" ry="6" stroke-dasharray="4 5" opacity=".6"/>
+      </svg>
+      <h2>Your 3D body appears here</h2>
+      <p>Pick a body type, fill in the six measurements, then select Generate body mesh.</p>
+    </div>
+  </div>
+
+  <div id="loading"><div><div class="spinner"></div><p>Building your 3D body…</p></div></div>
+
+  <div class="toolbar" id="toolbar">
+    <button type="button" class="tool" id="spinBtn" aria-pressed="false">Auto-rotate</button>
+    <button type="button" class="tool" id="resetBtn">Reset view</button>
+    <a class="tool" id="downloadBtn" href="#" download>Download .obj</a>
+  </div>
+
+  <div id="hint">Drag to rotate · scroll to zoom · right-drag to pan</div>
+</main>
+
+<!-- ================= Measurement guide ================= -->
+<div id="guideModal" class="modal" role="dialog" aria-modal="true" aria-label="How to measure">
+  <div class="modal-card">
+    <button type="button" class="close" id="closeBtn" aria-label="Close guide">&times;</button>
+    <img src="{{ url_for('static', filename='images/body_measurement_guide.png') }}" alt="Body measurement guide">
+    <p class="modal-note">Fitly uses height, weight, chest, waist, hips and thigh. Biacromial and bicristal widths are not needed.</p>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+
+/* ---------------- 3D viewer ---------------- */
+const viewerEl = document.getElementById("viewer");
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
+const DEFAULT_TARGET = new THREE.Vector3(0, 0.9, 0);
+const DEFAULT_CAM = new THREE.Vector3(0, 1.15, 3.4);
+camera.position.copy(DEFAULT_CAM);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+viewerEl.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(DEFAULT_TARGET);
+controls.enableDamping = true;
+controls.autoRotateSpeed = 1.6;
+controls.minDistance = 0.8;
+controls.maxDistance = 8;
+controls.maxPolarAngle = Math.PI * 0.52;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xc9b6ee, 1.15));
+const key = new THREE.DirectionalLight(0xffffff, 1.1);
+key.position.set(2.5, 4, 3);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0xb7a2ff, 0.6);
+rim.position.set(-3, 2, -3);
+scene.add(rim);
+
+// Soft circular platform, echoing the cover art
+const platform = new THREE.Group();
+const disc = new THREE.Mesh(
+  new THREE.CircleGeometry(1.0, 64).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 })
+);
+disc.position.y = -0.002;
+const ring1 = new THREE.Mesh(
+  new THREE.RingGeometry(0.98, 1.0, 96).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x9b86e8, transparent: true, opacity: 0.8 })
+);
+const ring2 = new THREE.Mesh(
+  new THREE.RingGeometry(0.66, 0.675, 96).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x9b86e8, transparent: true, opacity: 0.4 })
+);
+platform.add(disc, ring1, ring2);
+scene.add(platform);
+
+const meshMaterial = new THREE.MeshStandardMaterial({
+  color: 0x9a87ea, roughness: 0.55, metalness: 0.05, side: THREE.DoubleSide,
+});
+
+let currentMesh = null;
+
+function resize() {
+  const w = viewerEl.clientWidth, h = viewerEl.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(viewerEl);
+resize();
+
+(function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+})();
+
+function frameMesh(box) {
+  const height = box.max.y - box.min.y;
+  const target = new THREE.Vector3(0, height * 0.5, 0);
+  const dist = (height * 0.5) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.35;
+  DEFAULT_TARGET.copy(target);
+  DEFAULT_CAM.set(0, target.y + height * 0.12, dist);
+  controls.target.copy(target);
+  camera.position.copy(DEFAULT_CAM);
+  platform.scale.setScalar(Math.max(0.55, height * 0.42));
+}
+
+function loadObj(url) {
+  return new Promise((resolve, reject) => {
+    new OBJLoader().load(url, (obj) => {
+      if (currentMesh) scene.remove(currentMesh);
+
+      obj.traverse((child) => {
+        if (child.isMesh) {
+          child.geometry.computeVertexNormals();
+          child.material = meshMaterial;
+        }
+      });
+
+      // SMPL is in metres and Y-up: centre on the platform and rest the feet on it.
+      const box = new THREE.Box3().setFromObject(obj);
+      const center = box.getCenter(new THREE.Vector3());
+      obj.position.x -= center.x;
+      obj.position.z -= center.z;
+      obj.position.y -= box.min.y;
+
+      scene.add(obj);
+      currentMesh = obj;
+      frameMesh(new THREE.Box3().setFromObject(obj));
+      resolve();
+    }, undefined, reject);
+  });
+}
+
+/* ---------------- Form + API ---------------- */
+const form = document.getElementById("measForm");
+const statusEl = document.getElementById("status");
+const warnEl = document.getElementById("warnings");
+const betaBox = document.getElementById("betaBox");
+const betaOutEl = document.getElementById("betaOut");
+const genBtn = document.getElementById("genBtn");
+const loadingEl = document.getElementById("loading");
+const emptyEl = document.getElementById("empty");
+const toolbar = document.getElementById("toolbar");
+const downloadBtn = document.getElementById("downloadBtn");
+
+function setStatus(text, cls = "") {
+  statusEl.className = cls;
+  statusEl.textContent = text;
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  warnEl.hidden = true;
+  betaBox.hidden = true;
+
+  if (!form.querySelector('input[name="gender"]:checked')) {
+    setStatus("Choose a body type first (step 1).", "error");
+    return;
+  }
+  if (!form.checkValidity()) {
+    form.reportValidity();
+    setStatus("Check the highlighted measurements and try again.", "error");
+    return;
+  }
+
+  setStatus("");
+  genBtn.disabled = true;
+  genBtn.textContent = "Generating…";
+  loadingEl.classList.add("show");
+
+  const payload = {};
+  new FormData(form).forEach((v, k) => payload[k] = v);
+
+  try {
+    const res = await fetch("/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Something went wrong. Please try again.");
+
+    await loadObj(data.obj_url);
+    emptyEl.classList.add("hidden");
+    toolbar.classList.add("show");
+    downloadBtn.href = data.obj_url;
+    downloadBtn.setAttribute("download", data.obj_url.split("/").pop());
+
+    setStatus("Your 3D body is ready.", "ok");
+
+    // Range warnings from the model
+    const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+    if (warnings.length) {
+      warnEl.innerHTML = "<strong>Heads up</strong><ul></ul>";
+      const ul = warnEl.querySelector("ul");
+      warnings.forEach((w) => {
+        const li = document.createElement("li");
+        li.textContent = typeof w === "string" ? w : JSON.stringify(w);
+        ul.appendChild(li);
+      });
+      warnEl.hidden = false;
+    }
+
+    // Technical details
+    betaOutEl.innerHTML = "";
+    const std = data.beta_std || [];
+    data.betas.forEach((b, i) => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      const s = std[i] !== undefined ? ` ±${std[i].toFixed(2)}` : "";
+      chip.textContent = `β${i + 1} ${b.toFixed(2)}${s}`;
+      betaOutEl.appendChild(chip);
+    });
+    betaBox.hidden = false;
+  } catch (err) {
+    setStatus(err.message, "error");
+  } finally {
+    genBtn.disabled = false;
+    genBtn.textContent = "Generate body mesh";
+    loadingEl.classList.remove("show");
+  }
+});
+
+/* Example values (only fills fields that exist) */
+const EXAMPLES = {
+  male:   { height: 177, weight: 79, chest: 104, waist: 91, hips: 102, thigh: 54 },
+  female: { height: 165, weight: 60, chest: 92,  waist: 74, hips: 99,  thigh: 56 },
+};
+document.getElementById("exampleBtn").addEventListener("click", () => {
+  const checked = form.querySelector('input[name="gender"]:checked');
+  const g = checked && EXAMPLES[checked.value] ? checked.value : "female";
+  document.getElementById("g-" + g).checked = true;
+  Object.entries(EXAMPLES[g]).forEach(([k, v]) => {
+    const el = document.getElementById(k);
+    if (el) el.value = v;
+  });
+  setStatus("Example values filled in. Select Generate body mesh.");
+});
+
+/* Viewer toolbar */
+const spinBtn = document.getElementById("spinBtn");
+spinBtn.addEventListener("click", () => {
+  controls.autoRotate = !controls.autoRotate;
+  spinBtn.setAttribute("aria-pressed", String(controls.autoRotate));
+});
+document.getElementById("resetBtn").addEventListener("click", () => {
+  controls.target.copy(DEFAULT_TARGET);
+  camera.position.copy(DEFAULT_CAM);
+  controls.update();
+});
+
+/* Guide modal */
+const guideModal = document.getElementById("guideModal");
+const guideBtn = document.getElementById("guideBtn");
+const closeBtn = document.getElementById("closeBtn");
+const openGuide = () => { guideModal.classList.add("open"); closeBtn.focus(); };
+const closeGuide = () => { guideModal.classList.remove("open"); guideBtn.focus(); };
+guideBtn.addEventListener("click", openGuide);
+closeBtn.addEventListener("click", closeGuide);
+guideModal.addEventListener("click", (e) => { if (e.target === guideModal) closeGuide(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && guideModal.classList.contains("open")) closeGuide(); });
+</script>
+
+</body>
+</html>
